@@ -1,0 +1,8 @@
+{
+  "name": "PIXEL AI – Create Beyond Imagination",
+  "description": "Futuristic 3D AI Image Generator studio powered by Google Gemini image models with real server-side generation, curated 8-category Explore gallery, and persistent local creations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
