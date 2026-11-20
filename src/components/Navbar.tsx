@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Menu, Moon, Sun, X } from 'lucide-react';
 import type { NavSection, ThemeMode, UserProfile } from '../types';
 
@@ -18,7 +18,7 @@ const NAV_ITEMS: Array<{ id: NavSection; label: string }> = [
   { id: 'creations', label: 'My Creations' },
 ];
 
-export function Navbar({
+export const Navbar = memo(function Navbar({
   activeSection,
   onNavigate,
   theme,
@@ -180,4 +180,4 @@ export function Navbar({
       )}
     </header>
   );
-}
+});

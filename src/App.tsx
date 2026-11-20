@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { Loader2 } from 'lucide-react';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { ExploreSection } from './components/ExploreSection';
 import { GeneratorWorkspace } from './components/GeneratorWorkspace';
 import { HeroSection } from './components/HeroSection';
-import { LightboxModal } from './components/LightboxModal';
-import { MyCreationsSection } from './components/MyCreationsSection';
 import { Navbar } from './components/Navbar';
 import { ParticleBackground } from './components/ParticleBackground';
-import { ProfileDrawer } from './components/ProfileDrawer';
 import { ToastContainer } from './components/ToastContainer';
 import { RANDOM_PROMPTS } from './data/catalog';
 import type {
@@ -22,6 +25,7 @@ import type {
   ToastMessage,
   UserProfile,
 } from './types';
+import { optimizeGeneratedDataUrl } from './utils/imageOptimizer';
 import {
   clearAllCreationsFromDB,
   copyTextToClipboard,
@@ -35,6 +39,12 @@ import {
   saveUserProfile,
 } from './utils/storage';
 
+// Lazy-load secondary views and modals so initial page load stays fast
+const ExploreSection = lazy(() => import('./components/ExploreSection'));
+const MyCreationsSection = lazy(() => import('./components/MyCreationsSection'));
+const LightboxModal = lazy(() => import('./components/LightboxModal'));
+const ProfileDrawer = lazy(() => import('./components/ProfileDrawer'));
+
 const INITIAL_PARAMS: GenerationParams = {
   prompt: '',
   style: '3D Render',
@@ -43,11 +53,24 @@ const INITIAL_PARAMS: GenerationParams = {
   count: 1,
 };
 
+const CLIENT_TIMEOUT_MS = 65_000;
+
 function createId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function ViewLoadingFallback() {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center px-4">
+      <div className="inline-flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/80 px-5 py-3 text-sm font-medium text-slate-600 dark:border-slate-800 dark:bg-[#0B1020]/85 dark:text-slate-300">
+        <Loader2 className="h-4 w-4 animate-spin text-violet-500 dark:text-cyan-400" aria-hidden="true" />
+        <span>Loading view...</span>
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
@@ -59,8 +82,10 @@ export default function App() {
   const [creations, setCreations] = useState<CreationItem[]>([]);
   const [recentResults, setRecentResults] = useState<CreationItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
 
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [apiError, setApiError] = useState<ApiErrorInfo | null>(null);
 
   const [previewItem, setPreviewItem] = useState<PreviewableArtwork | null>(null);
@@ -69,22 +94,46 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const randomIndexRef = useRef(0);
+  const isGeneratingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
+  const elapsedTimerRef = useRef<number>(0);
+  const scrollTimerRef = useRef<number>(0);
+  const toastTimersRef = useRef<Map<string, number>>(new Map());
   const workspaceRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const dismissToast = useCallback((id: string) => {
+    const existingTimer = toastTimersRef.current.get(id);
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+      toastTimersRef.current.delete(id);
+    }
+    setToasts((prev) => prev.filter((item) => item.id !== id));
+  }, []);
 
   const pushToast = useCallback(
     (type: ToastMessage['type'], title: string, description?: string) => {
       const id = createId();
-      setToasts((prev) => [...prev.slice(-3), { id, type, title, description }]);
-      window.setTimeout(() => {
+      setToasts((prev) => [...prev.slice(-2), { id, type, title, description }]);
+      const timerId = window.setTimeout(() => {
+        toastTimersRef.current.delete(id);
         setToasts((prev) => prev.filter((item) => item.id !== id));
-      }, 4200);
+      }, 4000);
+      toastTimersRef.current.set(id, timerId);
     },
     []
   );
 
-  const dismissToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((item) => item.id !== id));
+  // Clean up all timers and abort any in-flight requests on unmount
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      window.clearInterval(elapsedTimerRef.current);
+      window.clearTimeout(scrollTimerRef.current);
+      toastTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
+      toastTimersRef.current.clear();
+    };
   }, []);
 
   // Sync dark/light theme class on <html>
@@ -103,7 +152,7 @@ export default function App() {
     saveUserProfile(profile);
   }, [profile]);
 
-  // Load persisted IndexedDB creations
+  // Load persisted IndexedDB creations once on startup
   useEffect(() => {
     let cancelled = false;
 
@@ -124,17 +173,18 @@ export default function App() {
   }, []);
 
   const scrollToWorkspace = useCallback(() => {
-    if (activeSection !== 'home') {
-      setActiveSection('home');
-      window.setTimeout(() => {
-        workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        textareaRef.current?.focus();
-      }, 120);
-    } else {
+    window.clearTimeout(scrollTimerRef.current);
+    if (workspaceRef.current) {
+      workspaceRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      textareaRef.current?.focus();
+      return;
+    }
+    setActiveSection('home');
+    scrollTimerRef.current = window.setTimeout(() => {
       workspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       textareaRef.current?.focus();
-    }
-  }, [activeSection]);
+    }, 80);
+  }, []);
 
   const handleNavigate = useCallback((section: NavSection) => {
     setActiveSection(section);
@@ -180,8 +230,27 @@ export default function App() {
     pushToast('info', 'Random prompt loaded', `Style set to ${pick.style}.`);
   }, [pushToast]);
 
+  const stopGenerationTimer = useCallback(() => {
+    if (elapsedTimerRef.current) {
+      window.clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = 0;
+    }
+  }, []);
+
+  const handleCancelGeneration = useCallback(() => {
+    if (!abortControllerRef.current) return;
+    requestIdRef.current += 1;
+    abortControllerRef.current.abort();
+    abortControllerRef.current = null;
+    isGeneratingRef.current = false;
+    stopGenerationTimer();
+    setIsGenerating(false);
+    setGenerationStatus('');
+    pushToast('info', 'Generation cancelled');
+  }, [pushToast, stopGenerationTimer]);
+
   const runGeneration = useCallback(
-    async (targetParams: GenerationParams) => {
+    async (targetParams: GenerationParams, allowPreempt = false) => {
       const trimmedPrompt = targetParams.prompt.trim();
       if (!trimmedPrompt) {
         pushToast('error', 'Enter a prompt first', 'Describe the image you want to create.');
@@ -189,13 +258,47 @@ export default function App() {
         return;
       }
 
+      // Prevent duplicate concurrent requests unless explicitly regenerating
+      if (isGeneratingRef.current) {
+        if (!allowPreempt) return;
+        abortControllerRef.current?.abort();
+      }
+
+      const activeRequestId = ++requestIdRef.current;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      isGeneratingRef.current = true;
+
       setApiError(null);
       setIsGenerating(true);
+      setElapsedSeconds(0);
+      setGenerationStatus('Sending exact prompt to Cloudflare Workers AI...');
+
+      stopGenerationTimer();
+      const startedAt = Date.now();
+      elapsedTimerRef.current = window.setInterval(() => {
+        const secs = Math.floor((Date.now() - startedAt) / 1000);
+        setElapsedSeconds(secs);
+        if (secs >= 2) {
+          setGenerationStatus(
+            targetParams.aspectRatio === '1:1'
+              ? 'Rendering artwork with FLUX.1-schnell...'
+              : 'Rendering artwork with SDXL...'
+          );
+        }
+      }, 1000);
+
+      let timedOut = false;
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, CLIENT_TIMEOUT_MS);
 
       try {
         const response = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             prompt: trimmedPrompt,
             style: targetParams.style,
@@ -204,6 +307,12 @@ export default function App() {
             count: targetParams.count,
           }),
         });
+
+        window.clearTimeout(timeoutId);
+
+        if (activeRequestId !== requestIdRef.current) {
+          return;
+        }
 
         const payload = await response.json().catch(() => null);
 
@@ -214,9 +323,23 @@ export default function App() {
               payload?.error ||
               'Unable to generate image right now. Please try again.',
             instructions: payload?.instructions,
+            model: typeof payload?.model === 'string' ? payload.model : undefined,
+            details: typeof payload?.details === 'string' ? payload.details : undefined,
           };
           setApiError(errInfo);
           pushToast('error', 'Generation failed', errInfo.error);
+          return;
+        }
+
+        setGenerationStatus('Optimizing images...');
+        const maxDim = targetParams.quality === 'high' ? 2048 : 1440;
+        const optimizedUrls = await Promise.all(
+          payload.images.map((img: { dataUrl: string }) =>
+            optimizeGeneratedDataUrl(img.dataUrl, maxDim)
+          )
+        );
+
+        if (activeRequestId !== requestIdRef.current) {
           return;
         }
 
@@ -224,7 +347,7 @@ export default function App() {
         const generatedItems: CreationItem[] = payload.images.map(
           (img: { dataUrl: string; model: string }, index: number) => ({
             id: createId(),
-            imageUrl: img.dataUrl,
+            imageUrl: optimizedUrls[index] || img.dataUrl,
             prompt: trimmedPrompt,
             style: targetParams.style,
             aspectRatio: targetParams.aspectRatio,
@@ -251,23 +374,48 @@ export default function App() {
             'Saved automatically to My Creations.'
           );
         }
-      } catch {
+      } catch (err) {
+        window.clearTimeout(timeoutId);
+        if (activeRequestId !== requestIdRef.current) {
+          return;
+        }
+
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          if (timedOut) {
+            const timeoutError: ApiErrorInfo = {
+              code: 'TIMEOUT',
+              error: 'Image generation timed out after 65 seconds.',
+              instructions:
+                'Try generating 1 image at Standard quality or retry in a moment.',
+            };
+            setApiError(timeoutError);
+            pushToast('error', 'Request timed out', timeoutError.error);
+          }
+          return;
+        }
+
         const networkError: ApiErrorInfo = {
           code: 'NETWORK_ERROR',
           error: 'Could not reach the PIXEL AI generation server.',
-          instructions: 'Verify the server is running and try again.',
+          instructions: 'Check your network connection and try again.',
         };
         setApiError(networkError);
         pushToast('error', 'Connection error', networkError.error);
       } finally {
-        setIsGenerating(false);
+        if (activeRequestId === requestIdRef.current) {
+          abortControllerRef.current = null;
+          isGeneratingRef.current = false;
+          stopGenerationTimer();
+          setIsGenerating(false);
+          setGenerationStatus('');
+        }
       }
     },
-    [pushToast]
+    [pushToast, stopGenerationTimer]
   );
 
   const handleGenerate = useCallback(() => {
-    void runGeneration(params);
+    void runGeneration(params, false);
   }, [params, runGeneration]);
 
   const handleUsePromptFromSample = useCallback(
@@ -298,7 +446,7 @@ export default function App() {
       };
       setParams(nextParams);
       scrollToWorkspace();
-      void runGeneration(nextParams);
+      void runGeneration(nextParams, true);
     },
     [params.quality, runGeneration, scrollToWorkspace]
   );
@@ -340,6 +488,14 @@ export default function App() {
     [pushToast]
   );
 
+  const handleOpenProfile = useCallback(() => setIsProfileOpen(true), []);
+  const handleCloseProfile = useCallback(() => setIsProfileOpen(false), []);
+  const handleClosePreview = useCallback(() => setPreviewItem(null), []);
+  const handleDismissError = useCallback(() => setApiError(null), []);
+  const handleRequestClearAll = useCallback(() => setIsConfirmClearOpen(true), []);
+  const handleCancelClearAll = useCallback(() => setIsConfirmClearOpen(false), []);
+  const handleExploreNav = useCallback(() => handleNavigate('explore'), [handleNavigate]);
+
   return (
     <div className="relative flex min-h-screen flex-col">
       <ParticleBackground theme={theme} />
@@ -351,85 +507,68 @@ export default function App() {
         onToggleTheme={handleToggleTheme}
         profile={profile}
         creationsCount={creations.length}
-        onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenProfile={handleOpenProfile}
       />
 
       <main className="flex-1">
-        <AnimatePresence mode="wait">
-          {activeSection === 'home' && (
-            <motion.div
-              key="home"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <HeroSection
-                onGetStarted={scrollToWorkspace}
-                onExploreGallery={() => handleNavigate('explore')}
-                onUsePrompt={handleUsePromptFromSample}
-              />
+        {activeSection === 'home' && (
+          <div>
+            <HeroSection
+              onGetStarted={scrollToWorkspace}
+              onExploreGallery={handleExploreNav}
+              onUsePrompt={handleUsePromptFromSample}
+            />
 
-              <GeneratorWorkspace
-                workspaceRef={workspaceRef}
-                textareaRef={textareaRef}
-                params={params}
-                onChangeParams={handleChangeParams}
-                onGenerate={handleGenerate}
-                onClearPrompt={handleClearPrompt}
-                onCopyPrompt={handleCopyPrompt}
-                onRandomPrompt={handleRandomPrompt}
-                isGenerating={isGenerating}
-                apiError={apiError}
-                onDismissError={() => setApiError(null)}
-                recentResults={recentResults}
-                onPreview={setPreviewItem}
-                onDownload={handleDownload}
-                onRegenerate={handleRegenerate}
-                onDelete={handleDeleteCreation}
-              />
-            </motion.div>
-          )}
+            <GeneratorWorkspace
+              workspaceRef={workspaceRef}
+              textareaRef={textareaRef}
+              params={params}
+              onChangeParams={handleChangeParams}
+              onGenerate={handleGenerate}
+              onCancelGeneration={handleCancelGeneration}
+              onClearPrompt={handleClearPrompt}
+              onCopyPrompt={handleCopyPrompt}
+              onRandomPrompt={handleRandomPrompt}
+              isGenerating={isGenerating}
+              generationStatus={generationStatus}
+              elapsedSeconds={elapsedSeconds}
+              apiError={apiError}
+              onDismissError={handleDismissError}
+              recentResults={recentResults}
+              onPreview={setPreviewItem}
+              onDownload={handleDownload}
+              onRegenerate={handleRegenerate}
+              onDelete={handleDeleteCreation}
+            />
+          </div>
+        )}
 
-          {activeSection === 'explore' && (
-            <motion.div
-              key="explore"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <ExploreSection
-                onPreview={setPreviewItem}
-                onDownload={handleDownload}
-                onCopyPrompt={handleCopyPrompt}
-                onUsePrompt={handleUseSampleItem}
-              />
-            </motion.div>
-          )}
+        {activeSection === 'explore' && (
+          <Suspense fallback={<ViewLoadingFallback />}>
+            <ExploreSection
+              onPreview={setPreviewItem}
+              onDownload={handleDownload}
+              onCopyPrompt={handleCopyPrompt}
+              onUsePrompt={handleUseSampleItem}
+            />
+          </Suspense>
+        )}
 
-          {activeSection === 'creations' && (
-            <motion.div
-              key="creations"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            >
-              <MyCreationsSection
-                creations={creations}
-                isLoading={isLoadingHistory}
-                onPreview={setPreviewItem}
-                onDownload={handleDownload}
-                onCopyPrompt={handleCopyPrompt}
-                onRegenerate={handleRegenerate}
-                onDelete={handleDeleteCreation}
-                onRequestClearAll={() => setIsConfirmClearOpen(true)}
-                onGoToStudio={scrollToWorkspace}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {activeSection === 'creations' && (
+          <Suspense fallback={<ViewLoadingFallback />}>
+            <MyCreationsSection
+              creations={creations}
+              isLoading={isLoadingHistory}
+              onPreview={setPreviewItem}
+              onDownload={handleDownload}
+              onCopyPrompt={handleCopyPrompt}
+              onRegenerate={handleRegenerate}
+              onDelete={handleDeleteCreation}
+              onRequestClearAll={handleRequestClearAll}
+              onGoToStudio={scrollToWorkspace}
+            />
+          </Suspense>
+        )}
       </main>
 
       {/* Quiet Footer */}
@@ -468,27 +607,35 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Global Modals, Drawers & Toasts */}
-      <LightboxModal
-        item={previewItem}
-        onClose={() => setPreviewItem(null)}
-        onDownload={handleDownload}
-        onCopyPrompt={handleCopyPrompt}
-        onRegenerate={handleRegenerate}
-        onUsePrompt={handleUseSampleItem}
-        onDelete={handleDeleteCreation}
-      />
+      {/* Lazy-Loaded Modals & Drawers */}
+      {previewItem && (
+        <Suspense fallback={null}>
+          <LightboxModal
+            item={previewItem}
+            onClose={handleClosePreview}
+            onDownload={handleDownload}
+            onCopyPrompt={handleCopyPrompt}
+            onRegenerate={handleRegenerate}
+            onUsePrompt={handleUseSampleItem}
+            onDelete={handleDeleteCreation}
+          />
+        </Suspense>
+      )}
 
-      <ProfileDrawer
-        isOpen={isProfileOpen}
-        onClose={() => setIsProfileOpen(false)}
-        profile={profile}
-        creations={creations}
-        theme={theme}
-        onToggleTheme={handleToggleTheme}
-        onUpdateDisplayName={handleUpdateDisplayName}
-        onNavigate={handleNavigate}
-      />
+      {isProfileOpen && (
+        <Suspense fallback={null}>
+          <ProfileDrawer
+            isOpen={isProfileOpen}
+            onClose={handleCloseProfile}
+            profile={profile}
+            creations={creations}
+            theme={theme}
+            onToggleTheme={handleToggleTheme}
+            onUpdateDisplayName={handleUpdateDisplayName}
+            onNavigate={handleNavigate}
+          />
+        </Suspense>
+      )}
 
       <ConfirmDialog
         isOpen={isConfirmClearOpen}
@@ -496,7 +643,7 @@ export default function App() {
         description="This permanently removes all generated images from your browser's local library. Downloaded files on your device will not be affected."
         confirmLabel="Clear All Creations"
         onConfirm={handleConfirmClearAll}
-        onCancel={() => setIsConfirmClearOpen(false)}
+        onCancel={handleCancelClearAll}
       />
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

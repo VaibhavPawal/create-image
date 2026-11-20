@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { EXPLORE_CATEGORIES, EXPLORE_SAMPLES } from '../data/catalog';
 import type { ExploreCategory, PreviewableArtwork } from '../types';
 import { ImageCard } from './ImageCard';
@@ -10,18 +11,33 @@ interface ExploreSectionProps {
   onUsePrompt: (item: PreviewableArtwork) => void;
 }
 
-export function ExploreSection({
+const PAGE_SIZE = 4;
+
+export const ExploreSection = memo(function ExploreSection({
   onPreview,
   onDownload,
   onCopyPrompt,
   onUsePrompt,
 }: ExploreSectionProps) {
   const [selectedCategory, setSelectedCategory] = useState<'All' | ExploreCategory>('All');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const filteredItems =
-    selectedCategory === 'All'
-      ? EXPLORE_SAMPLES
-      : EXPLORE_SAMPLES.filter((item) => item.category === selectedCategory);
+  const filteredItems = useMemo(() => {
+    if (selectedCategory === 'All') return EXPLORE_SAMPLES;
+    return EXPLORE_SAMPLES.filter((item) => item.category === selectedCategory);
+  }, [selectedCategory]);
+
+  const visibleItems = useMemo(
+    () => filteredItems.slice(0, visibleCount),
+    [filteredItems, visibleCount]
+  );
+
+  const remainingCount = Math.max(0, filteredItems.length - visibleItems.length);
+
+  const handleCategoryChange = (category: 'All' | ExploreCategory) => {
+    setSelectedCategory(category);
+    setVisibleCount(PAGE_SIZE);
+  };
 
   return (
     <section className="py-12 sm:py-16">
@@ -35,11 +51,11 @@ export function ExploreSection({
               Explore AI Artwork
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base dark:text-slate-400">
-              Browse studio-curated sample works across eight visual categories. Select any artwork to inspect its prompt or load it directly into the generator.
+              Browse curated sample works across eight visual categories. Select any artwork to inspect its prompt or load it directly into the generator.
             </p>
           </div>
           <p className="font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
-            Showing {filteredItems.length} of {EXPLORE_SAMPLES.length} sample works
+            Showing {visibleItems.length} of {filteredItems.length} sample works
           </p>
         </div>
 
@@ -57,7 +73,7 @@ export function ExploreSection({
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setSelectedCategory(category)}
+                onClick={() => handleCategoryChange(category)}
                 className={`rounded-xl border px-4 py-2 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
                   active
                     ? 'border-violet-500 bg-violet-600 text-white shadow-sm shadow-violet-500/25'
@@ -70,9 +86,9 @@ export function ExploreSection({
           })}
         </div>
 
-        {/* Responsive Gallery Grid */}
+        {/* Paginated Gallery Grid */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredItems.map((item) => (
+          {visibleItems.map((item) => (
             <ImageCard
               key={item.id}
               item={item}
@@ -84,7 +100,26 @@ export function ExploreSection({
             />
           ))}
         </div>
+
+        {/* Load More Control */}
+        {remainingCount > 0 && (
+          <div className="mt-10 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+              className="glass-panel inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-violet-400/60 hover:text-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-slate-100 dark:hover:border-cyan-400/50 dark:hover:text-cyan-300"
+            >
+              <span>Load More Samples</span>
+              <span className="font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                ({remainingCount} more)
+              </span>
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
-}
+});
+
+export default ExploreSection;

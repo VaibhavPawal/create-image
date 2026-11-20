@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { memo, useEffect } from 'react';
 import {
   ArrowUpRight,
   Copy,
@@ -20,7 +20,7 @@ interface LightboxModalProps {
   onDelete: (id: string) => void;
 }
 
-export function LightboxModal({
+export const LightboxModal = memo(function LightboxModal({
   item,
   onClose,
   onDownload,
@@ -189,4 +189,6 @@ export function LightboxModal({
       </div>
     </div>
   );
-}
+});
+
+export default LightboxModal;

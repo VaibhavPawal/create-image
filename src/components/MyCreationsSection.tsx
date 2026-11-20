@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { FolderOpen, Search, Trash2, Wand2 } from 'lucide-react';
+import { memo, useMemo, useState } from 'react';
+import { ChevronDown, FolderOpen, Search, Trash2, Wand2 } from 'lucide-react';
 import { STYLE_PRESETS } from '../data/catalog';
 import type { CreationItem, PreviewableArtwork, StylePreset } from '../types';
 import { estimateCreationsSizeMB } from '../utils/storage';
@@ -17,7 +17,9 @@ interface MyCreationsSectionProps {
   onGoToStudio: () => void;
 }
 
-export function MyCreationsSection({
+const PAGE_SIZE = 8;
+
+export const MyCreationsSection = memo(function MyCreationsSection({
   creations,
   isLoading,
   onPreview,
@@ -30,6 +32,7 @@ export function MyCreationsSection({
 }: MyCreationsSectionProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [styleFilter, setStyleFilter] = useState<'All' | StylePreset>('All');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -42,7 +45,23 @@ export function MyCreationsSection({
     });
   }, [creations, searchQuery, styleFilter]);
 
+  const visibleItems = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount]
+  );
+
+  const remainingCount = Math.max(0, filtered.length - visibleItems.length);
   const storageSize = useMemo(() => estimateCreationsSizeMB(creations), [creations]);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setVisibleCount(PAGE_SIZE);
+  };
+
+  const handleStyleChange = (value: 'All' | StylePreset) => {
+    setStyleFilter(value);
+    setVisibleCount(PAGE_SIZE);
+  };
 
   return (
     <section className="py-12 sm:py-16">
@@ -50,14 +69,14 @@ export function MyCreationsSection({
         {/* Header */}
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-medium text-violet-600 dark:text-violet-400">
+            <p className="text-xs font-medium text-violet-600 dark:text-cyan-400">
               Stored Locally in Browser IndexedDB
             </p>
             <h1 className="mt-1.5 font-display text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl dark:text-white">
               My Creations
             </h1>
             <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              Every image you generate is saved persistently in your browser library for instant preview, download, and regeneration.
+              Every generated image is compressed and saved persistently in your browser library for instant preview, download, and regeneration.
             </p>
           </div>
 
@@ -89,7 +108,7 @@ export function MyCreationsSection({
               <input
                 type="search"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search your creations by prompt or style..."
                 aria-label="Search creations"
                 className="h-10 w-full rounded-xl border border-slate-200/90 bg-white/90 pr-3.5 pl-10 text-sm text-slate-900 placeholder:text-slate-400 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700/80 dark:bg-[#070B16] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-cyan-400"
@@ -103,7 +122,7 @@ export function MyCreationsSection({
               <select
                 id="creations-style-filter"
                 value={styleFilter}
-                onChange={(e) => setStyleFilter(e.target.value as 'All' | StylePreset)}
+                onChange={(e) => handleStyleChange(e.target.value as 'All' | StylePreset)}
                 className="h-10 w-full rounded-xl border border-slate-200/90 bg-white px-3 text-sm font-medium text-slate-800 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700/80 dark:bg-[#070B16] dark:text-slate-100 dark:focus:border-cyan-400"
               >
                 <option value="All">All Styles</option>
@@ -163,8 +182,8 @@ export function MyCreationsSection({
             <button
               type="button"
               onClick={() => {
-                setSearchQuery('');
-                setStyleFilter('All');
+                handleSearchChange('');
+                handleStyleChange('All');
               }}
               className="mt-4 rounded-xl border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-800 hover:border-violet-500 dark:border-slate-700 dark:text-slate-100"
             >
@@ -172,22 +191,42 @@ export function MyCreationsSection({
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((item) => (
-              <ImageCard
-                key={item.id}
-                item={item}
-                uniformAspect
-                onPreview={onPreview}
-                onDownload={onDownload}
-                onCopyPrompt={onCopyPrompt}
-                onRegenerate={onRegenerate}
-                onDelete={onDelete}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {visibleItems.map((item) => (
+                <ImageCard
+                  key={item.id}
+                  item={item}
+                  uniformAspect
+                  onPreview={onPreview}
+                  onDownload={onDownload}
+                  onCopyPrompt={onCopyPrompt}
+                  onRegenerate={onRegenerate}
+                  onDelete={onDelete}
+                />
+              ))}
+            </div>
+
+            {remainingCount > 0 && (
+              <div className="mt-10 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+                  className="glass-panel inline-flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-slate-800 transition-colors hover:border-violet-400/60 hover:text-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-slate-100 dark:hover:border-cyan-400/50 dark:hover:text-cyan-300"
+                >
+                  <span>Load More Creations</span>
+                  <span className="font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                    ({remainingCount} more)
+                  </span>
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>
   );
-}
+});
+
+export default MyCreationsSection;

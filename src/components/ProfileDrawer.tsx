@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { FolderHeart, Moon, Sun, X } from 'lucide-react';
 import type { CreationItem, NavSection, ThemeMode, UserProfile } from '../types';
 import { estimateCreationsSizeMB } from '../utils/storage';
@@ -14,7 +14,7 @@ interface ProfileDrawerProps {
   onNavigate: (section: NavSection) => void;
 }
 
-export function ProfileDrawer({
+export const ProfileDrawer = memo(function ProfileDrawer({
   isOpen,
   onClose,
   profile,
@@ -39,9 +39,9 @@ export function ProfileDrawer({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  const storageSize = useMemo(() => estimateCreationsSizeMB(creations), [creations]);
 
-  const storageSize = estimateCreationsSizeMB(creations);
+  if (!isOpen) return null;
 
   const handleSaveName = () => {
     const trimmed = nameInput.trim();
@@ -63,7 +63,7 @@ export function ProfileDrawer({
         aria-hidden="true"
       />
 
-      <aside className="relative z-10 flex h-full w-full max-w-md flex-col justify-between border-l border-slate-200/80 bg-white/95 p-6 shadow-2xl backdrop-blur-2xl dark:border-slate-800 dark:bg-[#080C18]/96">
+      <aside className="relative z-10 flex h-full w-full max-w-md flex-col justify-between border-l border-slate-200/80 bg-white/95 p-6 shadow-2xl backdrop-blur-xl dark:border-slate-800 dark:bg-[#080C18]/96">
         <div className="space-y-6 overflow-y-auto pr-1">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-200/80 pb-4 dark:border-slate-800">
@@ -180,4 +180,6 @@ export function ProfileDrawer({
       </aside>
     </div>
   );
-}
+});
+
+export default ProfileDrawer;

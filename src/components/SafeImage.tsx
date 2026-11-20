@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { ImageOff } from 'lucide-react';
 
 interface SafeImageProps {
@@ -7,17 +7,24 @@ interface SafeImageProps {
   className?: string;
   fallbackTitle?: string;
   loading?: 'eager' | 'lazy';
+  fetchPriority?: 'high' | 'low' | 'auto';
 }
 
-export function SafeImage({
+export const SafeImage = memo(function SafeImage({
   src,
   alt,
   className = '',
   fallbackTitle,
   loading = 'lazy',
+  fetchPriority = 'auto',
 }: SafeImageProps) {
   const [hasError, setHasError] = useState(false);
   const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+    setLoaded(false);
+  }, [src]);
 
   if (hasError || !src) {
     return (
@@ -37,10 +44,12 @@ export function SafeImage({
       src={src}
       alt={alt}
       loading={loading}
+      decoding="async"
+      fetchPriority={fetchPriority}
       referrerPolicy="no-referrer"
       onLoad={() => setLoaded(true)}
       onError={() => setHasError(true)}
       className={`${className} transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
     />
   );
-}
+});

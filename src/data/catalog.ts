@@ -171,18 +171,57 @@ export const EXPLORE_SAMPLES: ExploreItem[] = [
     imageUrl: '/src/assets/images/explore_technology_1795144748653.jpg',
     source: 'sample',
   },
+  {
+    id: 'sample-architecture-02',
+    title: 'Twilight Kyoto Lantern Alley',
+    category: 'Architecture',
+    style: 'Anime',
+    aspectRatio: '4:3',
+    prompt:
+      'Quiet rain-washed Kyoto alleyway at dusk illuminated by glowing indigo and warm paper lanterns reflected in wet cobblestones with drifting cherry petals',
+    imageUrl: '/src/assets/images/demo_anime_1795146579998.jpg',
+    source: 'sample',
+  },
+  {
+    id: 'sample-nature-02',
+    title: 'Prussian Blue Twilight Harbor',
+    category: 'Nature',
+    style: 'Watercolor',
+    aspectRatio: '4:3',
+    prompt:
+      'Delicate twilight harbor with wooden sailboats moored beside misty stone cliffs in luminous washes of Prussian blue, violet, and warm amber reflections',
+    imageUrl: '/src/assets/images/demo_watercolor_1795146580066.jpg',
+    source: 'sample',
+  },
+  {
+    id: 'sample-technology-02',
+    title: 'Starlight Explorer Automaton',
+    category: 'Technology',
+    style: 'Cartoon',
+    aspectRatio: '1:1',
+    prompt:
+      'Stylized explorer robot standing on a starry cliffside terrace holding a glowing cyan crystal compass under a violet night sky',
+    imageUrl: '/src/assets/images/demo_cartoon_1795146581004.jpg',
+    source: 'sample',
+  },
+  {
+    id: 'sample-nature-03',
+    title: 'Bioluminescent Sea Stack Lighthouse',
+    category: 'Nature',
+    style: 'Digital Art',
+    aspectRatio: '16:9',
+    prompt:
+      'Translucent crystalline lighthouse standing on dark volcanic sea stacks during a bioluminescent midnight storm with electric cyan wave crests',
+    imageUrl: '/src/assets/images/demo_digital_art_1795146579478.jpg',
+    source: 'sample',
+  },
 ];
 
 export const RANDOM_PROMPTS: Array<{ prompt: string; style: StylePreset }> = [
   {
     prompt:
       'A translucent glass lighthouse standing on jagged obsidian sea stacks during a bioluminescent midnight storm, electric cyan wave crests and soft mist',
-    style: 'Cinematic',
-  },
-  {
-    prompt:
-      'An ultra-clean ceramic and brushed titanium lunar rover parked along the rim of a sunlit crater with Earth rising in the deep starfield behind it',
-    style: '3D Render',
+    style: 'Digital Art',
   },
   {
     prompt:
@@ -191,27 +230,32 @@ export const RANDOM_PROMPTS: Array<{ prompt: string; style: StylePreset }> = [
   },
   {
     prompt:
-      'Architectural interior of a futuristic botanical conservatory beneath a geodesic glass dome, misty silver ferns, suspended walkways, cool morning sunlight',
-    style: 'Realistic Photography',
-  },
-  {
-    prompt:
-      'A soaring mechanical owl crafted from midnight enamel and glowing sapphire filaments gliding across a foggy neon skyline at night',
-    style: 'Cyberpunk',
-  },
-  {
-    prompt:
       'Delicate twilight harbor with wooden sailboats moored beside misty stone cliffs, luminous washes of Prussian blue, violet, and warm amber reflections',
     style: 'Watercolor',
   },
   {
     prompt:
-      'An ancient celestial astrolabe floating in the center of a vaulted starlight library with gilded brass rings and drifting dust motes',
+      'Stylized sleek explorer robot standing on a starry cliffside terrace holding a glowing cyan crystal compass under a violet night sky',
+    style: 'Cartoon',
+  },
+  {
+    prompt:
+      'Matte-black electric concept hypercar parked inside a minimalist rain-slicked concrete tunnel with overhead cyan neon reflections',
+    style: 'Cyberpunk',
+  },
+  {
+    prompt:
+      'Iridescent dark obsidian and frosted crystal geometric monolith floating above a mirror floor with electric violet and cyan volumetric rim lighting',
+    style: '3D Render',
+  },
+  {
+    prompt:
+      'Ancient ivory and obsidian spire citadel perched on floating crystalline cliffs above a sea of silver clouds with cascading waterfalls',
     style: 'Fantasy',
   },
   {
     prompt:
-      'Minimalist sculptural matte-slate sports coupe resting in a dry salt flat under a cobalt twilight sky with crisp horizon reflections',
-    style: 'Digital Art',
+      'Massive sleek orbital ring station silhouetted against a luminous sapphire, violet, and cyan planetary nebula above a ringed gas giant',
+    style: 'Cinematic',
   },
 ];

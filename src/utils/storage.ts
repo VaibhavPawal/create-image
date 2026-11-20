@@ -42,7 +42,22 @@ export async function loadCreationsFromDB(): Promise<CreationItem[]> {
       const req = store.getAll();
 
       req.onsuccess = () => {
-        const items = (req.result as CreationItem[]) ?? [];
+        const rawItems = (req.result as Array<Partial<CreationItem>>) ?? [];
+        const items: CreationItem[] = rawItems
+          .filter((item): item is Partial<CreationItem> & { id: string; imageUrl: string; prompt: string } =>
+            Boolean(item && item.id && item.imageUrl && item.prompt)
+          )
+          .map((item) => ({
+            id: item.id,
+            imageUrl: item.imageUrl,
+            prompt: item.prompt,
+            style: item.style ?? 'Digital Art',
+            aspectRatio: item.aspectRatio ?? '1:1',
+            quality: item.quality === 'high' ? 'high' : 'standard',
+            model: item.model ?? '@cf/black-forest-labs/flux-1-schnell',
+            createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+            source: 'generated',
+          }));
         items.sort((a, b) => b.createdAt - a.createdAt);
         resolve(items);
       };
@@ -197,7 +212,12 @@ export function downloadArtworkImage(imageUrl: string, label: string): void {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 44);
-  const ext = imageUrl.startsWith('data:image/jpeg') || imageUrl.endsWith('.jpg') ? 'jpg' : 'png';
+  const ext =
+    imageUrl.startsWith('data:image/webp') || imageUrl.endsWith('.webp')
+      ? 'webp'
+      : imageUrl.startsWith('data:image/jpeg') || imageUrl.endsWith('.jpg') || imageUrl.endsWith('.jpeg')
+        ? 'jpg'
+        : 'png';
   const filename = `pixel-ai-${slug || 'artwork'}-${Date.now().toString().slice(-4)}.${ext}`;
 
   const anchor = document.createElement('a');

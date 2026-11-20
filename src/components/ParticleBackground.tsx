@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import type { ThemeMode } from '../types';
 
 interface ParticleBackgroundProps {
@@ -15,39 +15,71 @@ interface Particle {
   alpha: number;
 }
 
-export function ParticleBackground({ theme }: ParticleBackgroundProps) {
+const FRAME_INTERVAL_MS = 1000 / 30; // 30fps cap for ultra-low CPU usage
+const MAX_LINK_DIST_SQ = 120 * 120;
+
+export const ParticleBackground = memo(function ParticleBackground({
+  theme,
+}: ParticleBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const prefersReducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)'
+    ).matches;
 
-    let width = (canvas.width = window.innerWidth);
-    let height = (canvas.height = window.innerHeight);
+    let width = 0;
+    let height = 0;
+    let dpr = 1;
+
+    const resizeCanvas = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    resizeCanvas();
 
     const palette =
       theme === 'dark'
-        ? ['#8B5CF6', '#3B82F6', '#06B6D4', '#A78BFA']
-        : ['#7C3AED', '#2563EB', '#0891B2', '#6366F1'];
+        ? ['#8B5CF6', '#3B82F6', '#06B6D4']
+        : ['#7C3AED', '#2563EB', '#0891B2'];
 
-    const particleCount = Math.min(48, Math.max(22, Math.floor((width * height) / 34000)));
+    const particleCount = Math.min(20, Math.max(10, Math.floor((width * height) / 90000)));
     const particles: Particle[] = Array.from({ length: particleCount }, (_, idx) => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      vx: (Math.random() - 0.5) * 0.28,
-      vy: (Math.random() - 0.5) * 0.28,
-      radius: Math.random() * 1.6 + 0.7,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      radius: Math.random() * 1.4 + 0.8,
       color: palette[idx % palette.length],
-      alpha: theme === 'dark' ? Math.random() * 0.38 + 0.16 : Math.random() * 0.22 + 0.08,
+      alpha: theme === 'dark' ? Math.random() * 0.32 + 0.14 : Math.random() * 0.18 + 0.08,
     }));
 
     let animationId = 0;
+    let lastFrameTime = 0;
+    let resizeTimer = 0;
+    let isPaused = document.hidden;
 
-    const drawFrame = () => {
+    const drawFrame = (timestamp: number) => {
+      if (isPaused) return;
+
+      if (!prefersReducedMotion && timestamp - lastFrameTime < FRAME_INTERVAL_MS) {
+        animationId = window.requestAnimationFrame(drawFrame);
+        return;
+      }
+      lastFrameTime = timestamp;
+
       ctx.clearRect(0, 0, width, height);
 
       for (let i = 0; i < particles.length; i++) {
@@ -55,10 +87,10 @@ export function ParticleBackground({ theme }: ParticleBackgroundProps) {
         if (!prefersReducedMotion) {
           p.x += p.vx;
           p.y += p.vy;
-          if (p.x < -10) p.x = width + 10;
-          if (p.x > width + 10) p.x = -10;
-          if (p.y < -10) p.y = height + 10;
-          if (p.y > height + 10) p.y = -10;
+          if (p.x < -8) p.x = width + 8;
+          else if (p.x > width + 8) p.x = -8;
+          if (p.y < -8) p.y = height + 8;
+          else if (p.y > height + 8) p.y = -8;
         }
 
         ctx.beginPath();
@@ -71,15 +103,15 @@ export function ParticleBackground({ theme }: ParticleBackgroundProps) {
           const other = particles[j];
           const dx = p.x - other.x;
           const dy = p.y - other.y;
-          const dist = Math.hypot(dx, dy);
-          if (dist < 135) {
+          const distSq = dx * dx + dy * dy;
+          if (distSq < MAX_LINK_DIST_SQ) {
             ctx.beginPath();
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(other.x, other.y);
             ctx.strokeStyle = p.color;
             ctx.globalAlpha =
-              (1 - dist / 135) * (theme === 'dark' ? 0.09 : 0.055);
-            ctx.lineWidth = 0.7;
+              (1 - distSq / MAX_LINK_DIST_SQ) * (theme === 'dark' ? 0.08 : 0.045);
+            ctx.lineWidth = 0.65;
             ctx.stroke();
           }
         }
@@ -91,19 +123,38 @@ export function ParticleBackground({ theme }: ParticleBackgroundProps) {
       }
     };
 
-    const handleResize = () => {
-      width = canvas.width = window.innerWidth;
-      height = canvas.height = window.innerHeight;
-      if (prefersReducedMotion) {
-        drawFrame();
+    const handleVisibilityChange = () => {
+      isPaused = document.hidden;
+      if (!isPaused && !prefersReducedMotion) {
+        lastFrameTime = 0;
+        animationId = window.requestAnimationFrame(drawFrame);
+      } else if (animationId) {
+        window.cancelAnimationFrame(animationId);
+        animationId = 0;
       }
     };
 
-    drawFrame();
-    window.addEventListener('resize', handleResize);
+    const handleResize = () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        resizeCanvas();
+        if (prefersReducedMotion) {
+          drawFrame(performance.now());
+        }
+      }, 150);
+    };
+
+    if (!isPaused) {
+      animationId = window.requestAnimationFrame(drawFrame);
+    }
+
+    window.addEventListener('resize', handleResize, { passive: true });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.clearTimeout(resizeTimer);
       if (animationId) window.cancelAnimationFrame(animationId);
     };
   }, [theme]);
@@ -111,19 +162,9 @@ export function ParticleBackground({ theme }: ParticleBackgroundProps) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      className="ambient-futuristic-bg pointer-events-none fixed inset-0 -z-10 overflow-hidden"
     >
-      {/* Ambient futuristic radial glows */}
-      <div className="animate-ambient-drift absolute -top-44 left-1/4 h-[34rem] w-[34rem] rounded-full bg-violet-600/14 blur-[120px] dark:bg-violet-600/20" />
-      <div
-        className="animate-ambient-drift absolute top-1/3 -right-32 h-[30rem] w-[30rem] rounded-full bg-cyan-500/10 blur-[120px] dark:bg-cyan-500/16"
-        style={{ animationDelay: '-6s' }}
-      />
-      <div
-        className="animate-ambient-drift absolute -bottom-48 left-12 h-[28rem] w-[28rem] rounded-full bg-blue-600/10 blur-[120px] dark:bg-blue-600/16"
-        style={{ animationDelay: '-11s' }}
-      />
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
     </div>
   );
-}
+});

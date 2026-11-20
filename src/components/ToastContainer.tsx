@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import type { ToastMessage } from '../types';
@@ -7,7 +8,10 @@ interface ToastContainerProps {
   onDismiss: (id: string) => void;
 }
 
-export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
+export const ToastContainer = memo(function ToastContainer({
+  toasts,
+  onDismiss,
+}: ToastContainerProps) {
   return (
     <div
       aria-live="polite"
@@ -32,11 +36,11 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
           return (
             <motion.div
               key={toast.id}
-              initial={{ opacity: 0, y: 14, scale: 0.97 }}
+              initial={{ opacity: 0, y: 12, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.97 }}
-              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-slate-200/90 bg-white/95 p-3.5 text-slate-900 shadow-xl backdrop-blur-xl dark:border-slate-700/80 dark:bg-[#0D1426]/95 dark:text-slate-100"
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+              className="pointer-events-auto flex items-start gap-3 rounded-2xl border border-slate-200/90 bg-white/95 p-3.5 text-slate-900 shadow-xl backdrop-blur-md dark:border-slate-700/80 dark:bg-[#0D1426]/95 dark:text-slate-100"
             >
               <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${iconColor}`} aria-hidden="true" />
               <div className="min-w-0 flex-1">
@@ -61,4 +65,4 @@ export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
       </AnimatePresence>
     </div>
   );
-}
+});

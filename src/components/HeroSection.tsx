@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { ArrowDown, ArrowUpRight, Compass, Wand2 } from 'lucide-react';
 import { HERO_SHOWCASE_ITEMS } from '../data/catalog';
 import type { StylePreset } from '../types';
@@ -11,7 +11,7 @@ interface HeroSectionProps {
   onUsePrompt: (prompt: string, style: StylePreset) => void;
 }
 
-export function HeroSection({
+export const HeroSection = memo(function HeroSection({
   onGetStarted,
   onExploreGallery,
   onUsePrompt,
@@ -37,8 +37,8 @@ export function HeroSection({
 
             <p className="mt-5 max-w-xl text-base leading-relaxed text-slate-600 sm:text-lg dark:text-slate-300">
               Create stunning AI-generated artwork with just a simple text prompt.
-              Direct lighting, style, aspect ratio, and resolution in a responsive
-              3D studio built for visual precision.
+              Direct lighting, style, aspect ratio, and resolution in a fast,
+              responsive 3D studio built for visual precision.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center gap-3.5">
@@ -80,17 +80,18 @@ export function HeroSection({
               {/* Subtle layered secondary floating glass plane behind primary */}
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute -top-4 -right-3 hidden h-32 w-44 overflow-hidden rounded-2xl border border-violet-400/25 bg-[#0B1020]/70 opacity-75 shadow-2xl backdrop-blur-md sm:block"
+                className="pointer-events-none absolute -top-4 -right-3 hidden h-32 w-44 overflow-hidden rounded-2xl border border-violet-400/25 bg-[#0B1020]/70 opacity-75 shadow-2xl sm:block"
                 style={{ transform: 'rotate(4deg)' }}
               >
                 <SafeImage
                   src={secondary.imageUrl}
                   alt=""
+                  loading="lazy"
                   className="h-full w-full object-cover opacity-80"
                 />
               </div>
 
-              <TiltCard maxTilt={8} className="rounded-3xl">
+              <TiltCard maxTilt={7} className="rounded-3xl">
                 <div className="glass-panel-glow overflow-hidden rounded-3xl p-3 sm:p-4">
                   <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-900">
                     <SafeImage
@@ -98,6 +99,7 @@ export function HeroSection({
                       alt={current.title}
                       fallbackTitle={current.title}
                       loading="eager"
+                      fetchPriority="high"
                       className="h-full w-full object-cover transition-transform duration-500 hover:scale-[1.03]"
                     />
                     <div
@@ -163,4 +165,4 @@ export function HeroSection({
       </div>
     </section>
   );
-}
+});

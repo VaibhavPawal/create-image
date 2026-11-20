@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   ArrowUpRight,
   Copy,
@@ -22,7 +23,14 @@ interface ImageCardProps {
   uniformAspect?: boolean;
 }
 
-export function ImageCard({
+const DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+export const ImageCard = memo(function ImageCard({
   item,
   onPreview,
   onDownload,
@@ -34,19 +42,10 @@ export function ImageCard({
 }: ImageCardProps) {
   const isSample = item.source === 'sample';
   const aspectClass = uniformAspect ? 'aspect-[4/3]' : getAspectRatioCssClass(item.aspectRatio);
-
-  const formattedDate =
-    item.source === 'generated'
-      ? new Intl.DateTimeFormat('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        }).format(new Date(item.createdAt))
-      : null;
+  const formattedDate = !isSample ? DATE_FORMATTER.format(new Date(item.createdAt)) : null;
 
   return (
-    <TiltCard maxTilt={6} className="h-full rounded-2xl">
+    <TiltCard maxTilt={5} className="gallery-card-opt h-full rounded-2xl">
       <article className="glass-panel-glow group flex h-full flex-col overflow-hidden rounded-2xl">
         {/* Image Container */}
         <div
@@ -62,11 +61,12 @@ export function ImageCard({
               src={item.imageUrl}
               alt={isSample ? item.title : item.prompt}
               fallbackTitle={isSample ? item.title : item.style}
-              className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
             />
           </button>
 
-          {/* Hover Gradient Scrim + Quick Preview Trigger */}
+          {/* Subtle Hover Quick Preview Trigger */}
           <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-end p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
             <button
               type="button"
@@ -83,7 +83,6 @@ export function ImageCard({
         {/* Clean Unboxed Metadata & Actions */}
         <div className="flex flex-1 flex-col justify-between gap-3 p-4">
           <div className="space-y-1.5">
-            {/* Unboxed Metadata Line (Zero Pill Discipline) */}
             <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
               {isSample ? (
                 <>
@@ -200,4 +199,4 @@ export function ImageCard({
       </article>
     </TiltCard>
   );
-}
+});

@@ -1,4 +1,4 @@
-import type { RefObject } from 'react';
+import { memo, type RefObject } from 'react';
 import {
   AlertTriangle,
   Copy,
@@ -7,6 +7,7 @@ import {
   ImagePlus,
   Loader2,
   Sparkles,
+  XCircle,
 } from 'lucide-react';
 import {
   ASPECT_RATIO_OPTIONS,
@@ -31,10 +32,13 @@ interface GeneratorWorkspaceProps {
   params: GenerationParams;
   onChangeParams: (next: Partial<GenerationParams>) => void;
   onGenerate: () => void;
+  onCancelGeneration: () => void;
   onClearPrompt: () => void;
   onCopyPrompt: (text: string) => void;
   onRandomPrompt: () => void;
   isGenerating: boolean;
+  generationStatus: string;
+  elapsedSeconds: number;
   apiError: ApiErrorInfo | null;
   onDismissError: () => void;
   recentResults: CreationItem[];
@@ -46,16 +50,19 @@ interface GeneratorWorkspaceProps {
 
 const COUNTS: ImageCount[] = [1, 2, 4];
 
-export function GeneratorWorkspace({
+export const GeneratorWorkspace = memo(function GeneratorWorkspace({
   workspaceRef,
   textareaRef,
   params,
   onChangeParams,
   onGenerate,
+  onCancelGeneration,
   onClearPrompt,
   onCopyPrompt,
   onRandomPrompt,
   isGenerating,
+  generationStatus,
+  elapsedSeconds,
   apiError,
   onDismissError,
   recentResults,
@@ -65,6 +72,11 @@ export function GeneratorWorkspace({
   onDelete,
 }: GeneratorWorkspaceProps) {
   const skeletonAspect = getAspectRatioCssClass(params.aspectRatio);
+  const selectedStyleHint =
+    STYLE_PRESETS.find((s) => s.value === params.style)?.hint ?? '';
+  const selectedAspectLabel =
+    ASPECT_RATIO_OPTIONS.find((a) => a.value === params.aspectRatio)?.label ??
+    params.aspectRatio;
 
   return (
     <section
@@ -80,7 +92,7 @@ export function GeneratorWorkspace({
               AI Image Studio
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Compose your prompt, refine style and framing, and generate real artwork via Google Gemini image models.
+              Describe your vision below to generate real, prompt-accurate artwork with Cloudflare Workers AI (FLUX &amp; SDXL).
             </p>
           </div>
         </div>
@@ -180,7 +192,7 @@ export function GeneratorWorkspace({
                 ))}
               </select>
               <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                {STYLE_PRESETS.find((s) => s.value === params.style)?.hint}
+                {selectedStyleHint}
               </p>
             </div>
 
@@ -221,8 +233,7 @@ export function GeneratorWorkspace({
                 })}
               </div>
               <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                Selected:{' '}
-                {ASPECT_RATIO_OPTIONS.find((a) => a.value === params.aspectRatio)?.label}
+                Selected: {selectedAspectLabel}
               </p>
             </div>
 
@@ -309,50 +320,83 @@ export function GeneratorWorkspace({
           {/* Action Bar */}
           <div className="mt-6 flex flex-col items-stretch justify-between gap-4 border-t border-slate-200/80 pt-6 sm:flex-row sm:items-center dark:border-slate-800/80">
             <div className="text-xs text-slate-500 dark:text-slate-400">
-              <span>
-                Output saved automatically to{' '}
-                <strong className="font-medium text-slate-700 dark:text-slate-200">
-                  My Creations
-                </strong>{' '}
-                in your browser.
-              </span>
+              {isGenerating ? (
+                <span className="inline-flex items-center gap-2 font-medium text-violet-700 dark:text-cyan-300">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  <span>
+                    {generationStatus}{' '}
+                    <span className="font-mono tabular-nums">({elapsedSeconds}s)</span>
+                  </span>
+                </span>
+              ) : (
+                <span>
+                  Generated images are optimized and saved automatically to{' '}
+                  <strong className="font-medium text-slate-700 dark:text-slate-200">
+                    My Creations
+                  </strong>
+                  .
+                </span>
+              )}
             </div>
 
-            <button
-              type="button"
-              onClick={onGenerate}
-              disabled={isGenerating || !params.prompt.trim()}
-              className="gradient-cta inline-flex items-center justify-center gap-2.5 rounded-xl px-7 py-3.5 text-sm font-semibold text-white whitespace-nowrap shrink-0 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#0B1020]"
-            >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  <span>
-                    Generating {params.count > 1 ? `${params.count} Images` : 'Image'}...
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4" aria-hidden="true" />
-                  <span>Generate Image</span>
-                </>
+            <div className="flex items-center justify-end gap-2.5">
+              {isGenerating && (
+                <button
+                  type="button"
+                  onClick={onCancelGeneration}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-3 text-xs font-semibold text-slate-700 transition-colors hover:border-rose-400 hover:text-rose-600 whitespace-nowrap shrink-0 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:hover:border-rose-500/60 dark:hover:text-rose-400"
+                >
+                  <XCircle className="h-4 w-4" aria-hidden="true" />
+                  <span>Cancel</span>
+                </button>
               )}
-            </button>
+
+              <button
+                type="button"
+                onClick={onGenerate}
+                disabled={isGenerating || !params.prompt.trim()}
+                className="gradient-cta inline-flex items-center justify-center gap-2.5 rounded-xl px-7 py-3.5 text-sm font-semibold text-white whitespace-nowrap shrink-0 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#0B1020]"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    <span>
+                      Generating {params.count > 1 ? `${params.count} Images` : 'Image'}...
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" aria-hidden="true" />
+                    <span>Generate Image</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Structured Error Display */}
+          {/* Structured Error Display (Billing, Quota, Config, Timeout, Safety) */}
           {apiError && (
             <div
               role="alert"
               className="mt-5 flex flex-col gap-3 rounded-2xl border border-rose-400/40 bg-rose-50/90 p-4 text-sm text-rose-950 sm:flex-row sm:items-start sm:justify-between dark:border-rose-500/35 dark:bg-rose-950/35 dark:text-rose-100"
             >
               <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden="true" />
+                <AlertTriangle
+                  className="mt-0.5 h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400"
+                  aria-hidden="true"
+                />
                 <div className="space-y-1">
                   <p className="font-semibold">{apiError.error}</p>
                   {apiError.instructions && (
                     <p className="text-xs leading-relaxed text-rose-800 dark:text-rose-200/90">
                       {apiError.instructions}
+                    </p>
+                  )}
+                  {(apiError.model || apiError.details) && (
+                    <p className="pt-1 font-mono text-[11px] leading-relaxed text-rose-700/90 dark:text-rose-300/80">
+                      {apiError.model ? `Model: ${apiError.model}` : ''}
+                      {apiError.model && apiError.details ? ' · ' : ''}
+                      {apiError.details ?? ''}
                     </p>
                   )}
                 </div>
@@ -392,9 +436,15 @@ export function GeneratorWorkspace({
                     className={`skeleton-shimmer relative w-full overflow-hidden rounded-xl bg-slate-200/80 dark:bg-slate-900/90 ${skeletonAspect}`}
                   >
                     <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center">
-                      <Loader2 className="h-6 w-6 animate-spin text-violet-500 dark:text-cyan-400" aria-hidden="true" />
+                      <Loader2
+                        className="h-6 w-6 animate-spin text-violet-500 dark:text-cyan-400"
+                        aria-hidden="true"
+                      />
                       <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                        Rendering variation {index + 1} of {params.count}
+                        {generationStatus}
+                      </span>
+                      <span className="font-mono text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
+                        Image {index + 1} of {params.count} · {elapsedSeconds}s
                       </span>
                     </div>
                   </div>
@@ -436,7 +486,7 @@ export function GeneratorWorkspace({
                 Your canvas is ready
               </h4>
               <p className="mt-1.5 max-w-md text-sm text-slate-600 dark:text-slate-400">
-                Enter a visual description above or try a random prompt to generate real artwork directly into this gallery.
+                Describe exactly what you want to see above, choose a style and aspect ratio, and click <strong>Generate Image</strong>.
               </p>
               <button
                 type="button"
@@ -452,4 +502,4 @@ export function GeneratorWorkspace({
       </div>
     </section>
   );
-}
+});

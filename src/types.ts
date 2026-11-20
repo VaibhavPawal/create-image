@@ -77,4 +77,6 @@ export interface ApiErrorInfo {
   code: string;
   error: string;
   instructions?: string;
+  model?: string;
+  details?: string;
 }
